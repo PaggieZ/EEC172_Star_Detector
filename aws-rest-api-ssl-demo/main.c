@@ -93,9 +93,6 @@
 #include "spi.h"
 
 
-
-
-
 //Common interface includes
 #include "pin_mux_config.h"
 #include "gpio_if.h"
@@ -147,6 +144,10 @@
 
 
 #define CONTROL_MODE 0  // control mode 0 for accelerometer control, 1 for remote control
+#define INIT true
+#define DISPLAY false
+
+
 
 //communication with OLED
 #define MOSI_Pin Pin_07
@@ -157,8 +158,8 @@
 #define SPI_IF_BIT_RATE 100000
 
 //NEED TO UPDATE THIS FOR IT TO WORK!
-#define DATE                19    /* Current Date */
-#define MONTH               5     /* Month 1-12 */
+#define DATE                2    /* Current Date */
+#define MONTH               6     /* Month 1-12 */
 #define YEAR                2024  /* Current year */
 #define HOUR                9    /* Time - hours */
 #define MINUTE              10    /* Time - minutes */
@@ -218,7 +219,7 @@ static int http_post(int);
 #define CONSOLE              UARTA0_BASE
 #define UartGetChar()        MAP_UARTCharGet(CONSOLE)
 #define UartPutChar(c)       MAP_UARTCharPut(CONSOLE,c)
-#define MAX_STRING_LENGTH    80
+#define MAX_STRING_LENGTH    16385      //128*128 + 1
 
 
 #define SPI_IF_BIT_RATE 100000
@@ -241,7 +242,7 @@ volatile int systick_elapsed = 0;
 volatile int reset_count = 0;
 volatile int buffer[100] = {2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2};
 volatile int buffer_ind = 0;
-char send_buffer[MAX_STRING_LENGTH];   //buffer for messages to be sent out
+char send_buffer[128][128];   //buffer for messages to be sent out
 int send_index = 0;
 int press_count = 0;
 volatile int prev_falling_edge_time = 0;
@@ -499,10 +500,7 @@ unsigned char newReadReg(unsigned char ucDevAddr, unsigned char ucRegOffset, uns
 
 }
 
-
-
-
-void main() {
+void start_up() {
     long lRetVal = -1;
     //
     // Initialize board configuration
@@ -574,26 +572,157 @@ void main() {
     // initialize global default app configuration
 //    g_app_config.host = SERVER_NAME;
 //    g_app_config.port = GOOGLE_DST_PORT;
-
-    //Connect the CC3200 to the local access point
+//
+//    // Connect the CC3200 to the local access point
+//    Message("Before connect to access point");
 //    lRetVal = connectToAccessPoint();
+//    Message("after connect to access point");
 //    //Set time so that encryption can be used
 //    lRetVal = set_time();
 //    if(lRetVal < 0) {
 //        UART_PRINT("Unable to set time in the device");
 //        LOOP_FOREVER();
 //    }
-    //Connect to the website with TLS encryption
+//    // Connect to the website with TLS encryption
 //    lRetVal = tls_connect();
 //    if(lRetVal < 0) {
 //        ERR_PRINT(lRetVal);
 //    }
-    // send out POST and GET request before accepting user input
-    //http_post(lRetVal);
-    //http_get(lRetVal);
+//    // send out POST and GET request before accepting user input
+//    http_post(lRetVal);
+//    http_get(lRetVal);
+//
+//    Report("period length: %d\n\r",SYSTICK_RELOAD_VAL );
+//    int prev_val = -1;
+}
+//
+int calibration_buffer[100];
+int calibration_buffer_ind = 0;
 
-    Report("period length: %d\n\r",SYSTICK_RELOAD_VAL );
-    //int prev_val = -1;
+void await_remote_input(){
+    while(1){
+    if (buffer_ind >= 32){
+        buffer_ind = 0;
+
+        //int i;
+
+        int first_set_buffer[8];
+        int second_set_buffer[8];
+        int third_set_buffer[8];
+        int fourth_set_buffer[8];
+
+        memcpy(&first_set_buffer, &buffer[0], sizeof(int) * 8);
+        memcpy(&second_set_buffer, &buffer[8], sizeof(int) * 8);
+        memcpy(&third_set_buffer, &buffer[16], sizeof(int) * 8);
+        memcpy(&fourth_set_buffer, &buffer[24], sizeof(int) * 8);
+
+        int recv_key = checkData(third_set_buffer, fourth_set_buffer, first_set_buffer, second_set_buffer);
+
+        Report("%d\n\r", recv_key);
+
+        if (recv_key == -1){
+            Message("Noisy signal, data parity incorrect. Discarding value\n\r");
+            continue;
+        }
+        if (recv_key == -2){
+            Message("Noisy signal, address parity incorrect. Discarding value\n\r");
+            continue;
+        }
+
+        if (recv_key == 12){//delete
+//                send_buffer[send_index] = ' ';
+//                send_index--;
+//                for (i = 0; i < send_index; i++){
+//                    Report("%c",send_buffer[i]);
+//                }
+//                continue;
+        calibration_buffer_ind--;
+        x_cursor -= 8;
+        if (x_cursor < 0){
+            x_cursor = WIDTH - 8;
+            y_cursor -= 12;
+        }
+
+        }
+        else if ((third_set_buffer[4] == 1 && third_set_buffer[0] == 0)){//mute
+            // // format and send out a POST request
+            // memset(send_buffer, ' ', sizeof(send_buffer));
+            // int l; 
+            // for (l = 0; l < prev_screen_ind; l++){
+            //     Report("y: %d, x: %d\n", prev_star_screen_y[l], prev_star_screen_x[l]);
+            //     send_buffer[prev_star_screen_y[l]][prev_star_screen_x[l]] = '1';
+            // }
+            // int i;
+            // int j;
+            // for (i = 0; i < 128; i++){
+            //     for(j = 0; j < 128; j++){
+            //         Report("%c", send_buffer[i][j]);
+            //     }
+            //     Message("\n");
+            // }
+            // // format_and_send(lRetVal);
+            // send_index = 0;
+            // continue;
+            break;
+        }
+        else{   //a number 0-9
+            calibration_buffer[calibration_buffer_ind] = recv_key;
+            calibration_buffer_ind++;
+        }
+
+    }
+    }
+}
+
+
+int x_cursor = 0;
+int y_cursor = 0;
+
+void draw_string(char* str){
+    int i;
+    for (i = 0; i < strlen(str); i++){
+        drawChar(x_cursor, y_cursor, str[i], WHITE, BLACK, 1);
+        x_cursor += 6;
+            //cursor_y += 16;
+            if (x_cursor >= WIDTH){
+                x_cursor = 0;
+                y_cursor += 12;
+            }
+    }
+
+
+}    
+    
+float latitude;
+float longitude;
+float hours;
+float minutes;
+
+
+void calibrate_location() {
+    char* time_msg = "Enter the current time (in UTC). 2 digit format; i.e. 05. Hit MUTE to confirm value, hit LAST to delete value.";
+    char* hour_msg = "Hours: ";
+    char* minute_msg = "Minutes: ";
+    char* location_msg = "Enter your current location: ";
+    char* lat_msg = "Latitude: ";
+    char* long_msg = "Longitude: ";
+
+    draw_string(time_msg);
+    x_cursor = 0;
+    y_cursor += 12;
+    draw_string(hour_msg);
+    await_remote_input();
+
+    hours = 
+}
+
+void main() {
+    start_up();
+    
+    // allow user to enter time, date, location
+
+    calibrate_location();
+
 
     // code that opens a csv file and reads in data.
     // data format is: RA hour, RA minute, RA second, DEC degree, DEC arcminute, DEC arcsecond
@@ -617,8 +746,6 @@ void main() {
         while(fgets(curr_line, 150, star_data)){
             //Report("Current line: %s", curr_line);
             // for now, use x and y data calculated from google sheet
-
-
             val = strtok(curr_line, delim);
             star_array[star_array_ind].name = val;
             val = strtok(NULL, delim);
@@ -694,12 +821,7 @@ void main() {
     buffer_ind = 0;
     while(1){
 
-        Report("x: %d, y: %d\n", x_accel, y_accel);
-
-
-
-
-
+        //Report("x: %d, y: %d\n", x_accel, y_accel);
         //fillScreen(BLACK);
         //Message("before read reg\n");
         //read and set current value of x acceleration
@@ -753,7 +875,7 @@ void main() {
         // set the new x position. Start with the current position, then decide how much to change the position based on accelerometer
         // measurement (magnitude and direction). Move_const changes the speed at which the ball moves.
 
-        oled_x = oled_x + (move_const * x_accel * x_dir/one_g);
+        oled_x = oled_x + (move_const * x_accel * x_dir * -1/one_g);
 
 
         // set the new y position
@@ -819,7 +941,7 @@ void main() {
             prev_prev_screen_ind = prev_screen_ind;
             memcpy(prev_prev_star_screen_x, prev_star_screen_x, prev_screen_ind * sizeof(int));
             memcpy(prev_prev_star_screen_y, prev_star_screen_y, prev_screen_ind * sizeof(int));
-            prev_screen_ind = 0;
+
             //sleep(1);
 
 //        }
@@ -870,12 +992,31 @@ void main() {
             }
             else if ((third_set_buffer[4] == 1 && third_set_buffer[0] == 0)){//mute
                 // format and send out a POST request
-                format_and_send(lRetVal);
+    
+                memset(send_buffer, ' ', sizeof(send_buffer));
+                int l; 
+                for (l = 0; l < prev_screen_ind; l++){
+                    Report("y: %d, x: %d\n", prev_star_screen_y[l], prev_star_screen_x[l]);
+                    send_buffer[prev_star_screen_y[l]][prev_star_screen_x[l]] = '1';
+                }
+                int i;
+                int j;
+                for (i = 0; i < 128; i++){
+                    for(j = 0; j < 128; j++){
+                        Report("%c", send_buffer[i][j]);
+                    }
+                    Message("\n");
+                }
+
+
+
+                // format_and_send(lRetVal);
                 send_index = 0;
                 continue;
            }
 
         }
+        prev_screen_ind = 0;
 
     }
 
@@ -899,17 +1040,18 @@ void format_and_send(int iTLSSockID){
     char* send_string = calloc(MAX_STRING_LENGTH, sizeof(char));
     strcat(final_formatted_str, formatted_send_str_first);
     int i = 0;
-    for (i = 0; i < send_index; i++){
-        Report("%c\n", send_buffer[i]);
-        char* temp = calloc(2, sizeof(char));
-        snprintf(temp, 2, "%c", send_buffer[i]);
-        strcat(final_formatted_str, temp);
-
-
+    int j = 0;
+    for (i = 0; i < 128; i++){
+        for (j = 0; j < 128; j++){
+            //Report("%c\n", send_buffer[i]);
+            char* temp = calloc(2, sizeof(char));
+            snprintf(temp, 2, "%c", send_buffer[i][j]);
+            strcat(final_formatted_str, temp);
+            free(temp);
+        }
     }
-
-    send_buffer[send_index]= '\0';
-    Report("send_string: %s", send_buffer);
+    //send_buffer[send_index]= '\0';
+    //Report("send_string: %s", send_buffer);
     strcat(final_formatted_str, send_buffer);
     strcat(final_formatted_str, formatted_send_str_second);
     //send_buffer[send_index+1] = '\0';

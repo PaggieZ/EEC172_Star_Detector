@@ -309,6 +309,7 @@ static long ConfigureSimpleLinkToDefaultState() {
 
     lMode = sl_Start(0, 0, 0);
     ASSERT_ON_ERROR(lMode);
+    Message("Past lmode");
 
     // If the device is not in station-mode, try configuring it in station-mode
     if (ROLE_STA != lMode) {
@@ -638,7 +639,10 @@ int connectToAccessPoint() {
     // Note that all profiles and persistent settings that were done on the
     // device will be lost
     //
+
+    Message("In connect to access point, past initialize app variables");
     lRetVal = ConfigureSimpleLinkToDefaultState();
+    Message("Past configure simple link to default state");
     if(lRetVal < 0) {
       if (DEVICE_NOT_IN_STATION_MODE == lRetVal)
           UART_PRINT("Failed to configure the device in its default state \n\r");
