@@ -9,5 +9,5 @@
 	<rts value="libc.a"/>
 	<templateProperties value="id=com.ti.common.project.core.emptyProjectWithMainTemplate,"/>
 	<isTargetManual value="true"/>
-	<origin value="/Users/erinle/Downloads/aws-rest-api-ssl-demo 2"/>
+	<origin value="/Users/rtsang/Documents/UCD/eec172-content/dev/lab-support/lab4/SSL_REST_API_AWS"/>
 </projectOptions>
